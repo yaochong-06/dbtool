@@ -20,9 +20,21 @@ def main():
     btime = datetime.datetime.now()
     database_type = ''
     try:
-        print("----------------dbtool功能列表如下：-----------------",end='')
         while database_type not in ('1', '2', '3', '4', '5', '6', '7', '8', '9'):
-            database_type = input("\n1):Oracle巡检(请给予可执行权限并用oracle用户执行)\n2):MySQL巡检\n3):PostgreSQL巡检\n4):informix巡检\n5):MySQL一键安装(请用root用户执行)\n6):脚本智能搜索\n7):一键MySQL主从\n8):MySQL慢日志分析\n9):binlog2sql闪回\n10):其他\n根据提示输入对应功能：")
+            database_type = input("""
+            ####################dbtool功能列表如下：####################
+            #1):Oracle巡检(请给予可执行权限并用oracle用户执行)         #
+            #2):MySQL巡检(请使用登陆数据库系统用户执行)                         #
+            #3):PostgreSQL巡检                                         #
+            #4):informix巡检                                           #
+            #5):MySQL一键安装(请用root用户执行)                        #
+            #6):脚本智能搜索                                           #
+            #7):一键MySQL主从                                          #
+            #8):MySQL慢日志分析                                        #
+            #9):binlog2sql闪回                                         #
+            #10):bbed初始化                                                  #  
+            ############################################################
+            根据提示输入对应功能：""")
 
             if database_type == '1':
                 company_name = input("请输入公司名称:")
@@ -34,6 +46,7 @@ def main():
                     break
                 else:
                     print("请输入正确的路径...")
+                    print("本次巡检失败,请重新开始...")
 
             elif database_type == '2':
                 company_name = input("请输入公司名称:")
@@ -79,13 +92,15 @@ def main():
                                         back_interval=args.back_interval, only_dml=args.only_dml,
                                         sql_type=args.sql_type)
                 binlog2sql.process_binlog()
+            elif database_type == '10':
+                oracleutil.bbed()
             else:
                 print("暂不支持其他数据库类型，请输入1、2、3、4、5")
     except Exception as re:
         print(re)
     finally:
         etime = datetime.datetime.now()
-        print(f"本次操作完成，耗时{(etime - btime).seconds}秒，如果是巡检的话，巡检报告在/tmp目录中")
+        print(f"本次操作完成，耗时{(etime - btime).seconds}秒")
 
 
 if __name__ == '__main__':

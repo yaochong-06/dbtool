@@ -156,6 +156,7 @@ def get_mysql_result(username, password, ip, port, database, sqlscripts):
     except Exception as re:
         print(re)
         print("连接创建失败,请检查用户名、密码、IP、端口等信息是否正确...")
+        print("本次巡检失败,请重新开始...")
 
     try:
         sql_text = get_mysql_file_contents(sqlscripts)
@@ -192,6 +193,7 @@ def get_postgresql_result(username, password, ip, port, database, sqlscripts):
     except Exception as re:
         print(re)
         print("连接创建失败,请检查用户名、密码、IP、端口等信息是否正确...")
+        print("本次巡检失败,请重新开始...")
     try:
         # 查询sql
         rows = cur.fetchall()

@@ -122,7 +122,7 @@ def main():
                     elif subinput == '7':
                         pass
                     elif subinput == '8':
-                        pass
+                        oracleutil.undo()
                     elif subinput == '9':
                         pass
                     elif subinput == '10':

@@ -284,25 +284,26 @@ system文件头损坏
 """
 
 
-def system_block_header():
+def block_header_repair():
     print("################BBED修复文件头主步骤如下：###############")
     print("0、模拟system表空间文件头损坏")
     print("1、rdba_kcbh(offset 4) 更改文件头block中记录的rdba地址")
     print("2、kccfhfsz(offset 44)  修复文件头中记录的文件大小")
-    print("3、kccfhfno(offset 52) datafile文件号")
-    print("4、kcvfhrdb(offset 96) root dba")
-    print("5、kscnbas(offset 100) v$datafile.creation_change#")
+    print("3、kccfhfno(offset 52) 修改datafile文件号")
+    print("4、kcvfhrdb(offset 96) 修改root dba，只有system文件有root dba地址")
+    print("5、kscnbas(offset 100) 修改1号文件创建时刻的scn，v$datafile.creation_change#")
     print("6、kcvfhcrt (offset 108) v$datafile.creation_time")
-    print("7、kcvfhsta (offset 138) 文件状态")
-    print("8、kcvfhtsn (offset 332) 表空间号v$datafile.ts#")
-    print("9、kcvfhtIn (offset 336) 表空间名称字符长度")
-    print("10、kcvfhtnm (offset 338) 表空间名称v$tablespace.name")
-    print("11、kcvfhrfn (offset 368) 相对文件号v$datafile.rfile#")
-    print("12、kscnbas (offset 484) checkpoint scn")
-    print("13、kcvcptim (offset 492) last checkpoint time")
-    print("14、kcvfhcpc (offset 144) Datafile checkpoint count")
+    print("7、kcvfhsta (offset 138) 修改文件状态")
+    print("8、kcvfhtsn (offset 332) 修改表空间号v$datafile.ts#")
+    print("9、kcvfhtIn (offset 336) 修改表空间名称字符长度")
+    print("10、kcvfhtnm (offset 338) 修改表空间名称，取自v$tablespace.name")
+    print("11、kcvfhrfn (offset 368) 修改文件头相对文件号，取自v$datafile.rfile#")
+    print("12、kscnbas (offset 484) 修复文件头检查点scn，checkpoint scn")
+    print("13、kcvcptim (offset 492) 修复文件头检查点时间，last checkpoint time")
+    print("14、使用dbv校验块是否更改好")
+    print("15、校验成功但报ORA-01207: file is more recent than control file - old control file错误")
     step = ''
-    while step not in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'):
+    while step not in ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15'):
         step = input("请输入对应数字查看每项具体操作步骤：")
         if step == '0':
             print("""
@@ -575,32 +576,552 @@ Check value for File 1, Block 1:
 current = 0x51e2, required = 0x51e2
             """)
         elif step == '3':
-            pass
+            print("""
+第一步、修改偏移量offset 52位置datafile文件号
+
+BBED> p offset 52 
+kcvfh.kcvfhhdr.kccfhfno
+-----------------------
+ub2 kccfhfno                                @52       0x0002
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:   52 to   83           Dba:0x00400001
+------------------------------------------------------------------------
+ 02000300 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> modify /x 01
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:   52 to   83           Dba:0x00400001
+------------------------------------------------------------------------
+ 01000300 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x51e1, required = 0x51e1
+            """)
         elif step == '4':
-            pass
+            print("""
+步骤一、计算修改值，修改root dba地址，只有system有root dba地址           
+select to_char((select fhrdb from x$kcvfh where fhfno = 1),'XXXXXXXXXXXXXXXXXX') from dual;
+
+TO_CHAR((SELECTFHRD
+-------------------
+       400208
+
+select 
+dbms_utility.data_block_address_file(to_number('400208','XXXXXXXX')) file_id,
+dbms_utility.data_block_address_block(to_number('400208','XXXXXXXX')) block_id 
+from dual;
+
+   FILE_ID   BLOCK_ID
+---------- ----------
+        1    520
+位于1号文件520号块上
+
+select to_char(520,'XXXXXX') from dual;
+
+TO_CHAR
+-------
+    208
+16进制带上1号文件就是 00400208 ，后面是二进制 0000 0000 0100 0000 0000 0010 0000 1000      
+
+步骤二、下面正式修改
+BBED> p kcvfhrdb
+ub4 kcvfhrdb                                @96       0x00000000
+
+BBED> set file 1 block 1 offset 96 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	96
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:   96 to  127           Dba:0x00400001
+------------------------------------------------------------------------
+ 00000000 2a070000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> modify /x 08024000
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:   96 to  127           Dba:0x00400001
+------------------------------------------------------------------------
+ 08024000 2a070000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x53a9, required = 0x53a9
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:   96 to  127           Dba:0x00400001
+------------------------------------------------------------------------
+ 08024000 2a070000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 
+
+ <32 bytes per line>     
+            """)
         elif step == '5':
-            pass
+            print("""
+修改1号文件创建时刻的scn
+数据库启动到mount，从控制文件中读取file 1 创建时间scn，如下为7
+SQL> select file#,creation_change# from v$datafile;
+
+     FILE# CREATION_CHANGE#
+---------- ----------------
+	 1		      7
+	 2	       1834
+	 3	     923328
+	 4	      16143
+
+SQL> select to_char('1834','XXXXXXXXXX') from dual;
+
+TO_CHAR('18
+-----------
+	72A
+第二步、讲creation scn 改为7，72A为2号文件创建时到scn，需要将其替换掉
+
+BBED> p kcvfhcrs
+struct kcvfhcrs, 8 bytes                    @100     
+   ub4 kscnbas                              @100      0x0000072a
+   ub2 kscnwrp                              @104      0x0000
+
+BBED> set file 1 block 1 offset 100 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	100
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  100 to  131           Dba:0x00400001
+------------------------------------------------------------------------
+ 2a070000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> modify /x 07000000 offset 100
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  100 to  131           Dba:0x00400001
+------------------------------------------------------------------------
+ 07000000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x5484, required = 0x5484
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  100 to  131           Dba:0x00400001
+------------------------------------------------------------------------
+ 07000000 00000000 81c92131 145d7c3f d5dc1e00 00000000 00000000 00000000 
+
+ <32 bytes per line>
+            """)
         elif step == '6':
-            pass
+            print("""
+修复文件头创建时间，从控制文件中读取1号文件创建时的时间:
+数据库启动到mount，然后进行查询
+select file#,
+to_char(creation_time,'yyyy-mm-dd hh24:mi:ss') creation_time_file,
+(to_char(creation_time,'yyyy') - 1988) *12*31*24*3600 +
+(to_char(creation_time,'mm') - 1) *31*24*3600 +
+(to_char(creation_time,'dd') - 1) *24*3600 +
+to_char(creation_time,'hh24') *3600 +
+to_char(creation_time,'mi') *60 +
+to_char(creation_time,'ss') creation_time_scn 
+from v$datafile order by 1; 
+
+     FILE# CREATION_TIME_FILE  CREATION_TIME_SCN
+---------- ------------------- -----------------
+	 1 2013-08-24 11:37:33	       824297853
+	 2 2013-08-24 11:37:37	       824297857
+	 3 2013-08-24 12:07:19	       824299639
+	 4 2013-08-24 11:37:49	       824297869
+将1号文件创建时的scn转换为16进制
+SQL> select to_char(824297853,'XXXXXXXXXXX') from dual;
+
+TO_CHAR(8242
+------------
+    3121C97D
+
+第二步、正式修改
+BBED> set file 1 block 1 offset 108 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	108
+	COUNT          	32
+
+BBED> p kcvfhcrt
+ub4 kcvfhcrt                                @108      0x3121c981
+
+BBED> modify /x 7DC92131 offset 108
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  108 to  139           Dba:0x00400001
+------------------------------------------------------------------------
+ 7dc92131 145d7c3f d5dc1e00 00000000 00000000 00000000 00000000 00000400 
+
+ <32 bytes per line>
+ 
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x5478, required = 0x5478
+            """)
         elif step == '7':
-            pass
+            print("""
+#define KCVFHHBP 0x01 /*hotbackup-in-process on file(fuzzy file)*/
+#define KCVFHOFZ 0x04 /*Online Fuzzy because it was online and db open*/
+#define KCVFHMFZ 0x10 /*Media recovery Fuzzy -file in media recovery*/
+#define KCVFHAFZ 0x40 /*Absolutely Fuzzy -fuzzyness from file scan */
+当一个datafile处于fuzzy模糊状态的时候，其kcvfhsta为0x04
+BBED> p offset 138
+kcvfh.kcvfhsta
+--------------
+ub2 kcvfhsta                                @138      0x0004 (KCVFHOFZ)
+
+BBED> set file 1 block 1 offset 138 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	138
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  138 to  169           Dba:0x00400001
+------------------------------------------------------------------------
+ 04009500 00009ea0 783f9400 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+            """)
         elif step == '8':
-            pass
+            print("""
+更改表空间号，1号文件对应0号表空间
+SQL> select file#,ts# from v$datafile;
+
+     FILE#	  TS#
+---------- ----------
+	 1	    0
+	 2	    1
+	 3	    2
+	 4	    4
+查询得知1号文件对应0号表空间号，按照下面步骤修改
+BBED> p kcvfhtsn
+sword kcvfhtsn                              @332      1
+
+BBED> set file 1 block 1 offset 332 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	332
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  332 to  363           Dba:0x00400001
+------------------------------------------------------------------------
+ 01000000 06005359 53415558 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> modify /x 00 offset 332
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  332 to  363           Dba:0x00400001
+------------------------------------------------------------------------
+ 00000000 06005359 53415558 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x5479, required = 0x5479
+            """)
         elif step == '9':
-            pass
+            print("""
+SYSTEM和SYSAUX长度一样,所以不修改了
+BBED> p offset 336 
+pad
+---
+ub1 pad                                     @336      0x06
+
+BBED> p kcvfhtln
+ub2 kcvfhtln                                @336      0x0006
+
+BBED> p kcvfhtnm
+text kcvfhtnm[0]                            @338     S
+text kcvfhtnm[1]                            @339     Y
+text kcvfhtnm[2]                            @340     S
+text kcvfhtnm[3]                            @341     A
+text kcvfhtnm[4]                            @342     U
+text kcvfhtnm[5]                            @343     X
+text kcvfhtnm[6]                            @344      
+text kcvfhtnm[7]                            @345      
+text kcvfhtnm[8]                            @346      
+text kcvfhtnm[9]                            @347  
+            """)
         elif step == '10':
-            pass
+            print("""
+修改文件头记录的表空间名称
+SQL> select dump('SYSTEM', 16) from dual;
+
+DUMP('SYSTEM',16)
+-------------------------------
+Typ=96 Len=6: 53,59,53,54,45,4d
+
+BBED> set file 1 block 1 offset 338 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	338
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  338 to  369           Dba:0x00400001
+------------------------------------------------------------------------
+ 53595341 55580000 00000000 00000000 00000000 00000000 00000000 00000200 
+
+ <32 bytes per line>
+ 
+BBED> p kcvfhtnm
+text kcvfhtnm[0]                            @338     S
+text kcvfhtnm[1]                            @339     Y
+text kcvfhtnm[2]                            @340     S
+text kcvfhtnm[3]                            @341     A
+text kcvfhtnm[4]                            @342     U
+text kcvfhtnm[5]                            @343     X
+
+BBED> dump offset 338 count 32
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  338 to  369           Dba:0x00400001
+------------------------------------------------------------------------
+ 53595341 55580000 00000000 00000000 00000000 00000000 00000000 00000200 
+
+ <32 bytes per line>
+
+BBED> modify /x 53 offset 338
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  338 to  369           Dba:0x00400001
+------------------------------------------------------------------------
+ 53595341 55580000 00000000 00000000 00000000 00000000 00000000 00000200 
+
+ <32 bytes per line>
+
+BBED> modify /x 54454d offset 341
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  341 to  372           Dba:0x00400001
+------------------------------------------------------------------------
+ 54454d00 00000000 00000000 00000000 00000000 00000000 00000002 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x5469, required = 0x5469
+
+BBED> p kcvfhtnm
+text kcvfhtnm[0]                            @338     S
+text kcvfhtnm[1]                            @339     Y
+text kcvfhtnm[2]                            @340     S
+text kcvfhtnm[3]                            @341     T
+text kcvfhtnm[4]                            @342     E
+text kcvfhtnm[5]                            @343     M
+            """)
         elif step == '11':
-            pass
+            print("""
+通过下面sql查询相对文件号：
+SQL> select file#,rfile# from v$datafile;
+
+     FILE#     RFILE#
+---------- ----------
+	 1	    1
+	 2	    2
+	 3	    3
+	 4	    4
+	 
+BBED> set file 1 block 1 offset 368 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	368
+	COUNT          	32
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  368 to  399           Dba:0x00400001
+------------------------------------------------------------------------
+ 02000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+ 
+ BBED> modify /x 01 
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  368 to  399           Dba:0x00400001
+------------------------------------------------------------------------
+ 01000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x546a, required = 0x546a
+            """)
         elif step == '12':
-            pass
+            print("""
+通过下面sql查询控制文件中记录的1号文件的checkpoint_change#
+select file#,creation_change#,checkpoint_change#,unrecoverable_change#,last_change#,offline_change#
+from v$datafile order by 1
+
+     FILE# CREATION_CHANGE# CHECKPOINT_CHANGE# UNRECOVERABLE_CHANGE# LAST_CHANGE# OFFLINE_CHANGE#
+---------- ---------------- ------------------ --------------------- ------------ ---------------
+	    1   		      7	           2023135			           0			          2022612
+	    2	           1834	           2023135			           0			          2022612
+	    3	         923328	           2023135			           0			          2022612
+	    4	          16143	           2023135			           0			          2022612
+
+SQL> select to_char(2023135,'XXXXXXXXXXXXXXXXXX') from dual;
+
+TO_CHAR(2023135,'XX
+-------------------
+	     1EDEDF
+	     
+下面是进行修改scn的步骤，不修改的话，如果归档完整，直接recover datafile 1 也可以
+BBED> set file 1 block 1 offset 484 count 32
+	FILE#          	1
+	BLOCK#         	1
+	OFFSET         	484
+	COUNT          	32
+
+BBED> modify /x dfde1e offset 484
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  484 to  515           Dba:0x00400001
+------------------------------------------------------------------------
+ dfde1e00 00000000 555d7c3f 01000000 0a000000 73010000 10000000 02000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x546a, required = 0x546a
+
+BBED> dump
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  484 to  515           Dba:0x00400001
+------------------------------------------------------------------------
+ dfde1e00 00000000 555d7c3f 01000000 0a000000 73010000 10000000 02000000 
+
+ <32 bytes per line>
+            """)
+        elif step == '13':
+            print("""
+查询控制文件中记录scn值，此值与12一样，不修改应用归档日志也是可以自动修复的
+select file#,
+to_char(checkpoint_time,'yyyy-mm-dd hh24:mi:ss') checkpoint_time_file,
+(to_char(checkpoint_time,'yyyy') - 1988) *12*31*24*3600 +
+(to_char(checkpoint_time,'mm') - 1) *31*24*3600 +
+(to_char(checkpoint_time,'dd') - 1) *24*3600 +
+to_char(checkpoint_time,'hh24') *3600 +
+to_char(checkpoint_time,'mi') *60 +
+to_char(checkpoint_time,'ss') checkpoint_time_scn 
+from v$datafile order by 1; 
+     FILE# CHECKPOINT_TIME_FIL CHECKPOINT_TIME_SCN
+---------- ------------------- -------------------
+	    1  2021-02-21 17:16:05		1065114965
+	    2  2021-02-21 17:16:05		1065114965
+	    3  2021-02-21 17:16:05		1065114965
+	    4  2021-02-21 17:16:05		1065114965
+
+SQL> select to_char(1065114965,'XXXXXXXXXXXXXX') from dual;
+
+TO_CHAR(1065114
+---------------
+       3F7C5D55
+
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  492 to  523           Dba:0x00400001
+------------------------------------------------------------------------
+ 555d7c3f 01000000 0a000000 73010000 10000000 02000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> modify /x 555d7c3f offset 492
+Warning: contents of previous BIFILE will be lost. Proceed? (Y/N) Y
+ File: /u01/app/oracle/oradata/prod/system01.dbf (1)
+ Block: 1                Offsets:  492 to  523           Dba:0x00400001
+------------------------------------------------------------------------
+ 555d7c3f 01000000 0a000000 73010000 10000000 02000000 00000000 00000000 
+
+ <32 bytes per line>
+
+BBED> sum apply
+Check value for File 1, Block 1:
+current = 0x546a, required = 0x546a
+            """)
+        elif step == '14':
+            print("""
+使用dbv校验块是否更改好
+dbv file=/u01/app/oracle/oradata/prod/system01.dbf start=1 end=2
+
+DBVERIFY: Release 11.2.0.4.0 - Production on Mon Feb 22 14:49:42 2021
+
+Copyright (c) 1982, 2011, Oracle and/or its affiliates.  All rights reserved.
+
+DBVERIFY - Verification starting : FILE = /u01/app/oracle/oradata/prod/system01.dbf
 
 
-# system_block_header()
+DBVERIFY - Verification complete
+
+Total Pages Examined         : 2
+Total Pages Processed (Data) : 0
+Total Pages Failing   (Data) : 0
+Total Pages Processed (Index): 0
+Total Pages Failing   (Index): 0
+Total Pages Processed (Other): 2
+Total Pages Processed (Seg)  : 0
+Total Pages Failing   (Seg)  : 0
+Total Pages Empty            : 0
+Total Pages Marked Corrupt   : 0
+Total Pages Influx           : 0
+Total Pages Encrypted        : 0
+Highest block SCN            : 1225671 (0.1225671)
+            """)
+        elif step == '15':
+            print("""
+如果校验成功但是报 ORA-01207: file is more recent than control file - old control file错误
+方法一：手工创建控制文件
+方法二：修改checkpoint count
+kcvfhcpc (offset 144) Datafile checkpoint count
+kcvfhccc (offset 148) Controlfile Checkpoint Count
+
+BBED> p kcvfhcpc
+ub4 kcvfhcpc                                @140      0x00000098
+
+BBED> p kcvfhccc
+ub4 kcvfhccc                                @148      0x00000097
+正确的值：数据文件中记录的要比控制文件中记录的值相等，或大于1，在更新scn的时候要把文件头计数器原来的值拷贝到控制文件
+然后再加1，所以数据文件头的值要比控制文件大1
+            """)
+
+
+"""
+坏块处理
+"""
 
 
 def block_recovery():
-    pass
+    print("物理坏块：通常是由于硬件损坏如磁盘异常导致，内存有问题、存储链路有问题、IO问题、文件系统有问题、Oracle本身问题等。")
+    print("逻辑坏块：可能都是软件问题导致通常是由于Oracle bug导致，比如data block和index block数据不一致")
+
 
 
 def undo():
@@ -613,4 +1134,3 @@ def undo():
     print("为什么我的undo不够了--Undo段内部重用规则：")
     print("undo表空间的大小估算以及创建：")
 
-system_block_header()

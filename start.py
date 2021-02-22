@@ -32,18 +32,18 @@ def main():
             #7):一键MySQL主从                                          #
             #8):MySQL慢日志分析                                        #
             #9):binlog2sql闪回                                         #
-            #10):数据库恢复，子功能：                                  #
-            #    1、bbed初始化；                                       #
-            #    2、controlfile丢失恢复；                              #
+            #10):数据库恢复及子功能：                                  #
+            #    1、bbed初始化                                        #
+            #    2、controlfile丢失恢复                               #
             #    3、system文件头损坏恢复
-            #    4、跳过归档恢复
+            #    4、Oracle坏块处理
             #    5、手工修复block数据
             #    6、归档模式下缺失redo log后恢复
             #    7、Redo Architecture and Configuration
             #    8、Undo深入内部解析  
             #    9、恢复ora-600[4193][4194]错误
             #    10、ORA-8102 Index Corruption恢复
-            #    11、Oracle坏块处理                          #  
+            #    11、跳过归档恢复                          #  
             ############################################################
             根据提示输入对应功能：""")
 
@@ -112,9 +112,9 @@ def main():
                     elif subinput == '2':
                         oracleutil.recreate_controlfile()
                     elif subinput == '3':
-                        oracleutil.system_block_header()
+                        oracleutil.block_header_repair()
                     elif subinput == '4':
-                        pass
+                        oracleutil.block_recovery()
                     elif subinput == '5':
                         pass
                     elif subinput == '6':

@@ -5,15 +5,12 @@
 # @FileName: doc.py
 # @Software: PyCharm
 # @Blog    ：https://github.com/yaochong-06/ ; http://blog.itpub.net/29990276
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, InlineImage
 from data import get_sys_message
 # from data import get_oracle_result
-from data import get_oracle_local_result
-from data import get_mysql_result
-from data import get_postgresql_result
-from data import get_informix_result
+from data import get_oracle_local_result, get_mysql_result, get_postgresql_result, get_informix_result
 import time
-
+from data import text_to_image
 '''
 生成Oracle巡检doc文档
 '''
@@ -28,12 +25,12 @@ def get_ora_doc(company_name, oracle_home, sqlplus_path):
 
         context = {'company_name': company_name,
                    'check_time': check_time,
-                   'df': get_sys_message('df'),
                    'release': get_sys_message('release'),
-                   'top': get_sys_message('top'),
-                   'vmstat': get_sys_message('vmstat'),
                    'hostname': get_sys_message('hostname'),
-                   'free': get_sys_message('free'),
+                   'df': InlineImage(tpl, text_to_image('df -h')),
+                   'top': InlineImage(tpl, text_to_image('top -b -n 1 | head -n 50')),
+                   'vmstat': InlineImage(tpl, text_to_image('vmstat 1 5')),
+                   'free': InlineImage(tpl, text_to_image('free -g')),
                    # memory
                    'node_memory_MemAvailable': get_sys_message('node_memory_MemAvailable'),
                    'node_memory_MemTotal': get_sys_message('node_memory_MemTotal'),

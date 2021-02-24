@@ -9,6 +9,8 @@ import os
 # import cx_Oracle
 import pymysql
 import psycopg2
+from PIL import Image, ImageDraw, ImageFont
+import datetime
 
 
 # 删除文件最后一行
@@ -49,18 +51,11 @@ def get_postgresql_file_contents(filename):
 
 
 def get_sys_message(sysscripts):
-    if sysscripts == 'df':
-        return remove_last_line(os.popen('df -h', 'r', 100).read())
-    elif sysscripts == 'release':
+
+    if sysscripts == 'release':
         return remove_last_line(os.popen('cat /etc/redhat-release', 'r', 100).read())
-    elif sysscripts == 'top':
-        return remove_last_line(os.popen('top -b -n 1 | head -n 16', 'r', 100).read())
-    elif sysscripts == 'vmstat':
-        return remove_last_line(os.popen('vmstat 1 5', 'r', 100).read())
     elif sysscripts == 'hostname':
         return remove_last_line(os.popen('hostname', 'r', 100).read())
-    elif sysscripts == 'free':
-        return remove_last_line(os.popen('free -g', 'r', 100).read())
     # 内存
     elif sysscripts == 'node_memory_MemAvailable':
         return remove_last_line(os.popen("cat /proc/meminfo |awk '/MemAvailable/{print $2}'", 'r', 100).read())
@@ -223,7 +218,6 @@ def get_informix_result():
 
 # 获取Oracle执行结果
 def get_oracle_local_result(sqlscripts, oracle_home, sqlplus_path):
-
     res = os.popen(f"""
 export ORACLE_HOME={oracle_home} && {sqlplus_path} / as sysdba <<EOF
 set colsep "|"
@@ -250,3 +244,16 @@ EOF""", 'r', 100).readlines()
 
     return list_oracle_result_dict
 
+
+def text_to_image(command):
+    picture_name = datetime.datetime.now()
+    text = os.popen(f"{command}", 'r', 100).read()
+    line = os.popen(f"{command} | wc -l ", 'r', 100).read()
+
+    im = Image.new("RGB", (440, int(line) * 20), (255, 255, 255))  # 图片大小和字体颜色
+    dr = ImageDraw.Draw(im)
+    font = ImageFont.truetype(os.path.join("static/Oracle", "song.ttf"), 10)  # 设置字体大小
+    dr.text((10, 5), text, font=font, fill="#000000")  # 起始位置和字体颜色
+    im.show()
+    im.save(f"/tmp/{picture_name}.png")
+    return f"/tmp/{picture_name}.png"

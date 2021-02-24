@@ -1114,6 +1114,19 @@ ub4 kcvfhccc                                @148      0x00000097
 
 
 """
+跳过归档恢复
+"""
+
+
+def archive():
+    print("""
+场景：在做恢复的时候，发现丢失部分归档日志，无法正常恢复，使用bbed跳过归档    
+    """)
+
+
+archive()
+
+"""
 坏块处理
 """
 
@@ -1121,7 +1134,6 @@ ub4 kcvfhccc                                @148      0x00000097
 def block_recovery():
     print("物理坏块：通常是由于硬件损坏如磁盘异常导致，内存有问题、存储链路有问题、IO问题、文件系统有问题、Oracle本身问题等。")
     print("逻辑坏块：可能都是软件问题导致通常是由于Oracle bug导致，比如data block和index block数据不一致")
-
 
 
 def undo():
@@ -1133,4 +1145,3 @@ def undo():
     print("读一致性(构造CR)：")
     print("为什么我的undo不够了--Undo段内部重用规则：")
     print("undo表空间的大小估算以及创建：")
-

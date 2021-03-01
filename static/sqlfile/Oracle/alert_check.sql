@@ -1,6 +1,9 @@
 -- 检查数据库一个月内告警日志中的ORA告警
+col message for a100
+col time for a20
+set linesize 200
+set pages 100
 SELECT
-    'db_check_alert_check' as "db_check_alert_check",
 	message_text message,
 	to_char( ORIGINATING_TIMESTAMP, 'yyyy-mm-dd HH24:mi:ss' ) time,
 	INST_ID

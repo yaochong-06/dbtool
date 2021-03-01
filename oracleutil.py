@@ -1124,7 +1124,268 @@ def archive():
     """)
 
 
-archive()
+def redo_recover():
+    print("""
+#######################################################################################
+ 说明：无法通过数据库启动到mount，通过查询select * from v$log 判断损坏到日志是active还是inactive
+ 应该按照先尝试inactive的步骤去做1
+#######################################################################################
+    """)
+    redo_type = ''
+    while redo_type not in ('1', '2', '3'):
+        redo_type = input("判断redo状态、请输入对应数字1表示inactive 2表示active 3表示current:")
+        if redo_type == '1':
+            print("""
+第一步：inactive redo log丢失，打开数据库告警日志报错信息如下：
+Errors in file /u01/app/oracle/diag/rdbms/prod/prod/trace/prod_lgwr_9477.trc:
+ORA-00313: open failed for members of log group 2 of thread 1
+ORA-00312: online log 2 thread 1: '/u01/app/oracle/oradata/prod/redo02.log'
+ORA-27047: unable to read the header block of file
+Linux-x86_64 Error: 25: Inappropriate ioctl for device
+Additional information: 1
+Errors in file /u01/app/oracle/diag/rdbms/prod/prod/trace/prod_lgwr_9477.trc:
+ORA-00313: open failed for members of log group 2 of thread 1
+ORA-00312: online log 2 thread 1: '/u01/app/oracle/oradata/prod/redo02.log'
+ORA-27047: unable to read the header block of file  
+  
+第二步：然后通过控制文件记录确定损坏的redo为inactive
+SQL>select * from v$Log
+
+    GROUP#    THREAD#  SEQUENCE#      BYTES  BLOCKSIZE	  MEMBERS ARC STATUS	       FIRST_CHANGE# FIRST_TIM NEXT_CHANGE# NEXT_TIME
+---------- ---------- ---------- ---------- ---------- ---------- --- ---------------- ------------- --------- ------------ ---------
+	 1	    1	      19   52428800	   512		1 NO  CURRENT		     2273251 28-FEB-21	 2.8147E+14
+	 3	    1	      18   52428800	   512		1 YES INACTIVE		     2246962 27-FEB-21	    2273251 28-FEB-21
+	 2	    1	      17   52428800	   512		1 YES INACTIVE		     2209448 26-FEB-21	    2246962 27-FEB-21
+
+SQL> alter database clear logfile group 2;
+
+Database altered.
+
+SQL> alter database drop logfile group 2; 
+
+Database altered.
+
+SQL> alter database add logfile group 2 '/u01/app/oracle/oradata/prod/redo02.log' size 50m reuse;
+
+Database altered.
+
+SQL> alter database open;
+
+Database altered.
+
+然后切换几次日志，看看是否有报错
+alter system switch logfile;
+            """)
+        elif redo_type == '2':
+            print("""
+第一步：现象1应用跑到一定程度会卡住,事务更新会hang在那里，active redo log丢失，打开数据库告警日志报错信息如下：
+Errors in file /u01/app/oracle/diag/rdbms/prod/prod/trace/prod_arc1_12716.trc:
+ORA-00313: open failed for members of log group 2 of thread 1
+ORA-00312: online log 2 thread 1: '/u01/app/oracle/oradata/prod/redo02.log'
+ORA-27047: unable to read the header block of file
+Linux-x86_64 Error: 25: Inappropriate ioctl for device
+Additional information: 1
+第二步：shutdown abort关闭，shutdown immediate会卡在那， 也可以先shutdown immediate
+
+SQL> select * from v$log;
+
+    GROUP#    THREAD#  SEQUENCE#      BYTES  BLOCKSIZE	  MEMBERS ARC STATUS	       FIRST_CHANGE# FIRST_TIM NEXT_CHANGE# NEXT_TIME
+---------- ---------- ---------- ---------- ---------- ---------- --- ---------------- ------------- --------- ------------ ---------
+	 1	    1	      28   52428800	   512		1 NO  CURRENT		     2307617 28-FEB-21	 2.8147E+14
+	 3	    1	      27   52428800	   512		1 NO  INACTIVE		     2307043 28-FEB-21	    2307617 28-FEB-21
+	 2	    1	      26   52428800	   512		1 NO  INACTIVE		     2306412 28-FEB-21	    2307043 28-FEB-21
+
+第二步：数据库启动到mount，尝试删除告警日志中报错到redo文件，如下不能删除说明不是inactive的，所以尝试active的恢复步骤
+active的日志不能clear和drop redo
+
+SQL> recover database;
+ORA-00283: recovery session canceled due to errors
+ORA-00264: no recovery required
+
+
+SQL> recover database until cancel;
+Media recovery complete.
+SQL> alter database open;
+alter database open
+*
+ERROR at line 1:
+ORA-01589: must use RESETLOGS or NORESETLOGS option for database open
+
+
+SQL> alter database open resetlogs;
+
+Database altered.
+
+######################################################
+ 第二种情况需要添加隐含参数
+######################################################
+告警日志把同样的错误
+Errors in file /u01/app/oracle/diag/rdbms/prod/prod/trace/prod_ora_16750.trc:
+ORA-00313: open failed for members of log group 3 of thread 1
+ORA-00312: online log 3 thread 1: '/u01/app/oracle/oradata/prod/redo03.log'
+ORA-27047: unable to read the header block of file
+Linux-x86_64 Error: 25: Inappropriate ioctl for device
+Additional information: 1
+Aborting crash recovery due to error 313
+尝试删除logfile group 3，删不掉说明不是inactive的redo
+
+SQL> alter database drop logfile group 3;
+alter database drop logfile group 3
+*
+ERROR at line 1:
+ORA-01624: log 3 needed for crash recovery of instance prod (thread 1)
+ORA-00312: online log 3 thread 1: '/u01/app/oracle/oradata/prod/redo03.log'
+
+根据提示，执行recover database until cancel，选择auto
+SQL> recover database until cancel;
+ORA-00279: change 2722424 generated at 02/28/2021 22:36:50 needed for thread 1
+ORA-00289: suggestion : /u01/app/oracle/fast_recovery_area/1_8_1065737641.dbf
+ORA-00280: change 2722424 for thread 1 is in sequence #8
+
+
+Specify log: {<RET>=suggested | filename | AUTO | CANCEL}
+auto
+ORA-00279: change 2821631 generated at 02/28/2021 22:36:56 needed for thread 1
+ORA-00289: suggestion : /u01/app/oracle/fast_recovery_area/1_9_1065737641.dbf
+ORA-00280: change 2821631 for thread 1 is in sequence #9
+ORA-00278: log file '/u01/app/oracle/fast_recovery_area/1_8_1065737641.dbf' no
+longer needed for this recovery
+
+
+ORA-00279: change 2920782 generated at 02/28/2021 22:37:02 needed for thread 1
+ORA-00289: suggestion : /u01/app/oracle/fast_recovery_area/1_10_1065737641.dbf
+ORA-00280: change 2920782 for thread 1 is in sequence #10
+ORA-00278: log file '/u01/app/oracle/fast_recovery_area/1_9_1065737641.dbf' no
+longer needed for this recovery
+
+
+ORA-00308: cannot open archived log
+'/u01/app/oracle/fast_recovery_area/1_10_1065737641.dbf'
+ORA-27037: unable to obtain file status
+Linux-x86_64 Error: 2: No such file or directory
+Additional information: 3
+
+
+ORA-01547: warning: RECOVER succeeded but OPEN RESETLOGS would get error below
+ORA-01194: file 1 needs more recovery to be consistent
+ORA-01110: data file 1: '/u01/app/oracle/oradata/prod/system01.dbf'
+
+
+SQL> alter database open;
+alter database open
+*
+ERROR at line 1:
+ORA-01589: must use RESETLOGS or NORESETLOGS option for database open
+
+
+SQL> alter database open resetlogs;
+alter database open resetlogs
+*
+ERROR at line 1:
+ORA-01194: file 1 needs more recovery to be consistent
+ORA-01110: data file 1: '/u01/app/oracle/oradata/prod/system01.dbf'
+
+此时参数文件添加隐含参数
+*._allow_resetlogs_corruption=true
+*._allow_error_simulation=true
+
+SQL> startup mount pfile='/home/oracle/pfile.ora';
+ORACLE instance started.
+
+Total System Global Area  768294912 bytes
+Fixed Size		    2257192 bytes
+Variable Size		  473960152 bytes
+Database Buffers	  289406976 bytes
+Redo Buffers		    2670592 bytes
+Database mounted.
+SQL> alter database open;
+alter database open
+*
+ERROR at line 1:
+ORA-01589: must use RESETLOGS or NORESETLOGS option for database open
+
+
+SQL> alter database open resetlogs;
+
+Database altered.
+打开之后切换几次日志，是否需要重建库要根据告警日志中是否还有报错还有库大小来考量
+        """)
+        elif redo_type == '3':
+            print("""
+1、current redo虽坏后，数据库会直接挂掉
+告警日志错误如下
+Errors in file /u01/app/oracle/diag/rdbms/prod/prod/trace/prod_lgwr_18119.trc:
+ORA-00320: cannot read file header from log 1 of thread 1
+ORA-00312: online log 1 thread 1: '/u01/app/oracle/oradata/prod/redo01.log'
+ORA-27072: File I/O error
+Additional information: 4
+Additional information: 1
+
+SQL> startup mount pfile='/home/oracle/pfile.ora';
+ORACLE instance started.
+
+Total System Global Area  768294912 bytes
+Fixed Size		    2257192 bytes
+Variable Size		  473960152 bytes
+Database Buffers	  289406976 bytes
+Redo Buffers		    2670592 bytes
+Database mounted.
+SQL> alter database open;          
+alter database open
+*
+ERROR at line 1:
+ORA-01589: must use RESETLOGS or NORESETLOGS option for database open
+
+
+SQL> alter database open resetlogs; 
+alter database open resetlogs
+*
+ERROR at line 1:
+ORA-00603: ORACLE server session terminated by fatal error
+ORA-00600: internal error code, arguments: [2662], [0], [2922276], [0], [2922434], [12583040], [], [], [], [], [], []
+ORA-00600: internal error code, arguments: [2662], [0], [2922275], [0], [2922434], [12583040], [], [], [], [], [], []
+ORA-01092: ORACLE instance terminated. Disconnection forced
+ORA-00600: internal error code, arguments: [2662], [0], [2922273], [0], [2922434], [12583040], [], [], [], [], [], []
+Process ID: 28496
+Session ID: 1 Serial number: 5
+
+
+SQL> select status from v$instance;
+ERROR:
+ORA-03114: not connected to ORACLE
+
+使用allow_resetlogs_corruption后打开数据库，我们说很多情况会遇到ORA-2662号错误，这个错误的含义是
+a data block SCN is ahead of the current SCN
+The ORA-600[2662] occurs when an SCN is compared to the dependent SCN stored in a UGA variable
+if the SCN is less than then dependent SCN then we signal the ORA-600[2662]
+internal error
+
+SQL> startup mount pfile='/home/oracle/pfile.ora';
+ORACLE instance started.
+
+Total System Global Area  768294912 bytes
+Fixed Size		    2257192 bytes
+Variable Size		  473960152 bytes
+Database Buffers	  289406976 bytes
+Redo Buffers		    2670592 bytes
+Database mounted.
+SQL> alter session set events '10015 trace name adjust_scn level 1';
+
+Session altered.
+
+SQL> alter database open;
+
+Database altered.
+
+################################################################################
+1、通过immediate trace name方式(在数据库open状态下)
+alter session set events 'immediate trace name adjust_scn level x';
+2、通过10015事件(在数据库无法打开，mount状态下)
+alter session set events '10015 trace name adjust_scn level x';
+
+注：level 1为增进scn (1024 * 1024 * 1024)，通常level 1就足够了，可根据实际情况进行调整。
+################################################################################
+            """)
 
 """
 坏块处理

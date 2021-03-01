@@ -51,7 +51,6 @@ def get_postgresql_file_contents(filename):
 
 
 def get_sys_message(sysscripts):
-
     if sysscripts == 'release':
         return remove_last_line(os.popen('cat /etc/redhat-release', 'r', 100).read())
     elif sysscripts == 'hostname':
@@ -250,10 +249,25 @@ def text_to_image(command):
     text = os.popen(f"{command}", 'r', 100).read()
     line = os.popen(f"{command} | wc -l ", 'r', 100).read()
 
-    im = Image.new("RGB", (440, int(line) * 20), (255, 255, 255))  # 图片大小和字体颜色
+    im = Image.new("RGB", (1400, int(line) * 40), (255, 255, 255))  # 图片大小和背景颜色
     dr = ImageDraw.Draw(im)
-    font = ImageFont.truetype(os.path.join("static/Oracle", "song.ttf"), 10)  # 设置字体大小
-    dr.text((10, 5), text, font=font, fill="#000000")  # 起始位置和字体颜色
+    font = ImageFont.truetype(os.path.join("static/Oracle", "song.ttf"), 32)  # 设置字体大小
+    dr.text((20, 10), text, font=font, fill="#000000")  # 起始位置和字体颜色
     im.show()
-    im.save(f"/tmp/{picture_name}.png")
-    return f"/tmp/{picture_name}.png"
+    im.save(f"/tmp/{picture_name}.jpg")
+    return f"/tmp/{picture_name}.jpg"
+
+
+# 获取Oracle执行结果
+def get_oracle_result(sqlscripts, oracle_home, sqlplus_path):
+    res = os.popen(f"""
+export ORACLE_HOME={oracle_home} && {sqlplus_path} / as sysdba <<EOF
+set linesize 32767
+set pages 20000
+col message for 90
+col time for a20
+@static/sqlfile/Oracle/{sqlscripts}.sql
+EOF""", 'r', 100).read()
+    return res
+
+

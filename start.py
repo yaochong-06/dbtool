@@ -38,7 +38,7 @@ def main():
             #    3、system文件头损坏恢复
             #    4、Oracle坏块处理
             #    5、手工修复block数据
-            #    6、归档模式下缺失redo log后恢复
+            #    6、归档模式下缺失redo log恢复
             #    7、Redo Architecture and Configuration
             #    8、Undo深入内部解析  
             #    9、恢复ora-600[4193][4194]错误
